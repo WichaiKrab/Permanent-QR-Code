@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "LinkRecord": {
+      "title": "LinkRecord",
+      "description": "A generated QR code URL mapping",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Auto-generated random short string like 'abcd123'" },
+        "targetUrl": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "clicks": { "type": "number" }
+      },
+      "required": ["id", "targetUrl", "name", "createdAt", "clicks"]
+    }
+  },
+  "firestore": {
+    "links/{linkId}": {
+      "schema": "LinkRecord",
+      "description": "Stores the link mappings and their stats. Public can create new links and read links to get targetUrl. Only admins can list all links and edit targetUrl."
+    }
+  }
+}

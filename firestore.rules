@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    
+    // Check if the user is in the admins collection
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidLinkRecord(data) {
+      return data.keys().hasAll(['id', 'targetUrl', 'name', 'createdAt', 'clicks']) &&
+             data.id is string && data.id.size() <= 64 &&
+             data.targetUrl is string && data.targetUrl.size() <= 2048 &&
+             data.name is string && data.name.size() <= 256 &&
+             data.createdAt is string &&
+             data.clicks is number;
+    }
+
+    match /admins/{userId} {
+       allow read: if isSignedIn() && request.auth.uid == userId;
+       allow write: if false; // Only manageable through firebase console to be safe
+    }
+
+    match /links/{linkId} {
+      // Anyone can read a link to be redirected
+      allow get: if isValidId(linkId);
+      
+      // Admins can list all links for the dashboard
+      allow list: if isAdmin();
+
+      // Anyone can create a link for the public generator
+      allow create: if isValidId(linkId) && 
+                       isValidLinkRecord(incoming()) && 
+                       incoming().id == linkId &&
+                       incoming().keys().hasOnly(['id', 'targetUrl', 'name', 'createdAt', 'updatedAt', 'clicks']);
+      
+      // Only admins can update the target URL or name
+      allow update: if isValidId(linkId) && 
+                       isValidLinkRecord(incoming()) && (
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['targetUrl', 'name', 'updatedAt']))
+      );
+
+      allow delete: if isAdmin();
+    }
+  }
+}
