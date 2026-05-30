@@ -7,8 +7,13 @@ service cloud.firestore {
 
     function isSignedIn() { return request.auth != null; }
     
-    // Check if the user is in the admins collection
-    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    // Check if the user is in the admins collection or matches the owner email
+    function isAdmin() { 
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "Wsritangkum@gmail.com"
+      );
+    }
 
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 

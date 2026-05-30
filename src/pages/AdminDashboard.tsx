@@ -8,7 +8,7 @@ import { LinkRecord } from '../types';
 
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function AdminDashboard() {
   const [links, setLinks] = useState<LinkRecord[]>([]);
@@ -114,9 +114,13 @@ export default function AdminDashboard() {
         <div className="px-6 py-6 flex items-center justify-between relative bg-white border-b border-slate-100/60 z-10 shrink-0">
           <Menu className="w-6 h-6 text-slate-600" strokeWidth={2.5} />
           <h1 className="text-[19px] font-bold text-[#0f2142] absolute left-1/2 -translate-x-1/2">QR Code ถาวร</h1>
-          <div className="w-[32px] h-[32px] bg-slate-100 rounded-full flex items-center justify-center border border-slate-200 shrink-0">
+          <button 
+            onClick={() => signOut(auth)}
+            className="w-[32px] h-[32px] bg-slate-100 rounded-full flex items-center justify-center border border-slate-200 shrink-0 hover:bg-slate-200 transition-colors"
+            title="ออกจากระบบ"
+          >
              <User className="w-[18px] h-[18px] text-slate-400" />
-          </div>
+          </button>
         </div>
 
         {/* Content */}
