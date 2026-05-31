@@ -9,10 +9,13 @@ service cloud.firestore {
     
     // Check if the user is in the admins collection or matches the owner email
     function isAdmin() { 
-      return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email == "Wsritangkum@gmail.com"
-      );
+      return isSignedIn() && 
+             request.auth.token.email_verified == true && (
+               exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+               exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
+               request.auth.token.email == "Wsritangkum@gmail.com" ||
+               request.auth.token.email == "wsritangkum@gmail.com"
+             );
     }
 
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
@@ -29,9 +32,10 @@ service cloud.firestore {
              data.clicks is number;
     }
 
-    match /admins/{userId} {
-       allow read: if isSignedIn() && request.auth.uid == userId;
-       allow write: if false; // Only manageable through firebase console to be safe
+    match /admins/{id} {
+       allow list, write: if request.auth.token.email == "Wsritangkum@gmail.com" || 
+                             request.auth.token.email == "wsritangkum@gmail.com";
+       allow get: if isSignedIn() && (id == request.auth.uid || id == request.auth.token.email);
     }
 
     match /links/{linkId} {

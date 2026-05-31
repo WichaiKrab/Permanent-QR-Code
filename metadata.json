@@ -1,6 +1,8 @@
 {
-  "name": "",
-  "description": "",
+  "name": "QR Code ถาวร",
+  "description": "ระบบสร้างและจัดการ QR Code ถาวรที่สามารถปรับเปลี่ยนลิงก์ปลายทางได้ตลอดเวลา",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
