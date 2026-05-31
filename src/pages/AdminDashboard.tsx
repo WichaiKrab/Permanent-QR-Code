@@ -48,14 +48,34 @@ export default function AdminDashboard() {
   const isSuperAdmin = auth.currentUser?.email?.toLowerCase() === superAdminEmail.toLowerCase();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         navigate('/admin/login');
       } else {
-        if (activeTab === 'qrcodes') {
-          fetchLinks();
-        } else if (activeTab === 'admins') {
-          fetchAdmins();
+        // Verify admin status
+        const isUserSuperAdmin = user.email?.toLowerCase() === superAdminEmail.toLowerCase();
+        let authorized = isUserSuperAdmin;
+        
+        if (!isUserSuperAdmin && user.email) {
+          try {
+            const adminDoc = await getDoc(doc(db, 'admins', user.email));
+            if (adminDoc.exists()) {
+              authorized = true;
+            }
+          } catch (err) {
+            console.error("Error checking admin status:", err);
+          }
+        }
+
+        if (!authorized) {
+          await signOut(auth);
+          navigate('/admin/login');
+        } else {
+          if (activeTab === 'qrcodes') {
+            fetchLinks();
+          } else if (activeTab === 'admins') {
+            fetchAdmins();
+          }
         }
       }
     });
@@ -200,6 +220,23 @@ export default function AdminDashboard() {
       return;
     }
 
+    // Check for exact duplicate (Name, URL, and ID)
+    const isDuplicate = links.some(link => 
+      link.id !== editItem.id && 
+      link.name === editName && 
+      link.targetUrl === editUrl && 
+      link.id === editId
+    );
+
+    if (isDuplicate) {
+      setNotification({
+        show: true,
+        type: 'delete',
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์, Short ID) มีอยู่ในระบบแล้ว ไม่สามารถบันทึกซ้ำได้'
+      });
+      return;
+    }
+
     try {
       const isIdChanged = editId !== editItem.id;
 
@@ -276,6 +313,22 @@ export default function AdminDashboard() {
       }
     } else {
       finalId = Math.random().toString(36).substring(2, 10);
+    }
+
+    // Check for exact duplicate (Name, URL, and ID)
+    const isDuplicate = links.some(link => 
+      link.name === (newName || `Link ${new Date().toLocaleDateString()}`) && 
+      link.targetUrl === newUrl && 
+      link.id === finalId
+    );
+
+    if (isDuplicate) {
+      setNotification({
+        show: true,
+        type: 'delete',
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์, Short ID) มีอยู่ในระบบแล้ว ไม่สามารถสร้างซ้ำได้'
+      });
+      return;
     }
 
     try {

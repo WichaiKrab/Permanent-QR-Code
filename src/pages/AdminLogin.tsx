@@ -3,7 +3,8 @@ import { QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 export default function AdminLogin() {
   const [error, setError] = useState('');
@@ -15,8 +16,31 @@ export default function AdminLogin() {
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      navigate('/admin/dashboard');
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      if (!user.email) {
+        throw new Error('Email not found from Google account');
+      }
+
+      // Check if user is super admin or in admins collection
+      const superAdminEmail = 'Wsritangkum@gmail.com';
+      const isSuperAdmin = user.email.toLowerCase() === superAdminEmail.toLowerCase();
+      
+      let isAdmin = isSuperAdmin;
+      if (!isSuperAdmin) {
+        const adminDoc = await getDoc(doc(db, 'admins', user.email));
+        if (adminDoc.exists()) {
+          isAdmin = true;
+        }
+      }
+
+      if (isAdmin) {
+        navigate('/admin/dashboard');
+      } else {
+        await auth.signOut();
+        setError('อีเมลของคุณไม่มีสิทธิ์เข้าถึงระบบผู้ดูแล โปรดติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์');
+      }
     } catch (err: any) {
       if (err.code === 'auth/unauthorized-domain') {
         setError('เเจ้งเตือนโดเมนไม่ได้รับอนุญาต: โปรดเพิ่มโดเมนของแอปนี้ใน Firebase Console (Authentication > Settings > Authorized domains)');
