@@ -22,11 +22,17 @@ export default function PublicGenerator() {
     if (!url) return;
     setIsGenerating(true);
     try {
+      // Ensure URL is absolute
+      let validatedUrl = url.trim();
+      if (validatedUrl && !/^https?:\/\//i.test(validatedUrl)) {
+        validatedUrl = `https://${validatedUrl}`;
+      }
+
       const newId = Math.random().toString(36).substring(2, 10);
       const now = new Date().toISOString();
       const newItem: LinkRecord = {
         id: newId,
-        targetUrl: url,
+        targetUrl: validatedUrl,
         name: name || `Public Link ${new Date().toLocaleDateString()}`,
         createdAt: now,
         updatedAt: now,

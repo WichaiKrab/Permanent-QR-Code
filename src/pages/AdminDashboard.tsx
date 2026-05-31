@@ -220,11 +220,17 @@ export default function AdminDashboard() {
       return;
     }
 
+    // Ensure URL is absolute
+    let validatedUrl = editUrl.trim();
+    if (validatedUrl && !/^https?:\/\//i.test(validatedUrl)) {
+      validatedUrl = `https://${validatedUrl}`;
+    }
+
     // Check for exact duplicate (Name, URL, and ID)
     const isDuplicate = links.some(link => 
       link.id !== editItem.id && 
       link.name === editName && 
-      link.targetUrl === editUrl && 
+      link.targetUrl === validatedUrl && 
       link.id === editId
     );
 
@@ -241,6 +247,11 @@ export default function AdminDashboard() {
       const isIdChanged = editId !== editItem.id;
 
       if (isIdChanged) {
+        // Confirmation for ID change
+        if (!window.confirm('คำเตือน: การเปลี่ยน Short ID จะทำให้ QR Code เดิมที่ดาวน์โหลดไปแล้วใช้งานไม่ได้ คุณแน่ใจหรือไม่?')) {
+          return;
+        }
+
         // Check if new ID already exists
         const newDocRef = doc(db, 'links', editId);
         const docSnap = await getDoc(newDocRef);
@@ -259,7 +270,7 @@ export default function AdminDashboard() {
           ...editItem,
           id: editId,
           name: editName,
-          targetUrl: editUrl,
+          targetUrl: validatedUrl,
           updatedAt: now
         };
 
@@ -270,7 +281,7 @@ export default function AdminDashboard() {
         const docRef = doc(db, 'links', editItem.id);
         await updateDoc(docRef, {
           name: editName,
-          targetUrl: editUrl,
+          targetUrl: validatedUrl,
           updatedAt: new Date().toISOString()
         });
       }
@@ -315,10 +326,16 @@ export default function AdminDashboard() {
       finalId = Math.random().toString(36).substring(2, 10);
     }
 
+    // Ensure URL is absolute
+    let validatedUrl = newUrl.trim();
+    if (validatedUrl && !/^https?:\/\//i.test(validatedUrl)) {
+      validatedUrl = `https://${validatedUrl}`;
+    }
+
     // Check for exact duplicate (Name, URL, and ID)
     const isDuplicate = links.some(link => 
       link.name === (newName || `Link ${new Date().toLocaleDateString()}`) && 
-      link.targetUrl === newUrl && 
+      link.targetUrl === validatedUrl && 
       link.id === finalId
     );
 
@@ -335,7 +352,7 @@ export default function AdminDashboard() {
       const now = new Date().toISOString();
       const newItem: LinkRecord = {
         id: finalId,
-        targetUrl: newUrl,
+        targetUrl: validatedUrl,
         name: newName || `Link ${new Date().toLocaleDateString()}`,
         createdAt: now,
         updatedAt: now,
@@ -445,6 +462,17 @@ export default function AdminDashboard() {
             <h1 className="text-[18px] font-bold text-[#0f2142] tracking-tight leading-none">Admin Panel</h1>
             <p className="text-[11px] text-slate-500 font-medium mt-1 uppercase tracking-wider">QR Code Management</p>
           </div>
+        </div>
+        
+        <div className="flex items-center space-x-2 text-[10px] sm:text-[12px] text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 hidden md:flex">
+          <span className="font-bold">Base URL:</span>
+          <span className="truncate max-w-[200px]">{appUrl}</span>
+          {appUrl.includes('run.app') && (
+            <span className="text-amber-500 flex items-center gap-1 font-bold ml-1">
+              <AlertCircle className="w-3 h-3" />
+              Preview Mode
+            </span>
+          )}
         </div>
         
         <div className="flex items-center space-x-3">

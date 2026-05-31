@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { LinkRecord } from '../types';
 
@@ -17,9 +17,20 @@ export default function RedirectPage() {
 
         if (docSnap.exists()) {
           const data = docSnap.data() as LinkRecord;
-          // In a real backend we'd increment clicks synchronously using existsAfter/getAfter or an increment.
-          // For simplicity in this client-side redirect, we'll just redirect since 'clicks' isn't secure from the client.
-          window.location.replace(data.targetUrl);
+          
+          // Increment clicks (fire and forget for better UX, though Firestore is fast)
+          updateDoc(docRef, {
+            clicks: increment(1)
+          }).catch(err => console.error('Failed to increment clicks:', err));
+
+          let target = data.targetUrl.trim();
+          
+          // Final safety check for absolute URL
+          if (!/^https?:\/\//i.test(target)) {
+            target = `https://${target}`;
+          }
+
+          window.location.replace(target);
         } else {
           setError('Link not found or has been disabled.');
         }
