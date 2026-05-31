@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Menu, User, Search, Edit, X, CheckCircle2, Lock, LogOut, 
-  RotateCcw, QrCode, Plus, Trash2, Download, Copy, Check, AlertCircle 
+  RotateCcw, QrCode, Plus, Trash2, Download, Copy, Check, AlertCircle, Eye 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -10,7 +10,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { generateQRDataUrl, generateQRSvg } from '../lib/qr';
 import { LinkRecord } from '../types';
 
-import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc, getDoc, query, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -117,7 +117,14 @@ export default function AdminDashboard() {
     setLoading(true);
     setFetchError(null);
     try {
-      const querySnapshot = await getDocs(collection(db, 'links'));
+      let q;
+      if (isSuperAdmin) {
+        q = collection(db, 'links');
+      } else {
+        q = query(collection(db, 'links'), where('createdBy', '==', auth.currentUser?.email || ''));
+      }
+      
+      const querySnapshot = await getDocs(q);
       const data: LinkRecord[] = [];
       querySnapshot.forEach((docSnap) => {
         const item = docSnap.data() as LinkRecord;
@@ -279,7 +286,13 @@ export default function AdminDashboard() {
         await performEditSave(validatedUrl, editId);
       }
     } catch (err) {
-      handleFirestoreError(err, 'update', `links/${editItem.id}`);
+      const msg = handleFirestoreError(err, 'update', `links/${editItem.id}`);
+      setNotification({
+        show: true,
+        type: 'delete',
+        title: 'เกิดข้อผิดพลาด',
+        message: `ไม่สามารถบันทึกข้อมูลได้: ${msg}`
+      });
     }
   };
 
@@ -310,7 +323,8 @@ export default function AdminDashboard() {
           id: editId,
           name: editName,
           targetUrl: validatedUrl,
-          updatedAt: now
+          updatedAt: now,
+          createdBy: editItem.createdBy || auth.currentUser?.email || 'unknown'
         };
 
         await setDoc(newDocRef, updatedItem);
@@ -318,11 +332,18 @@ export default function AdminDashboard() {
       } else {
         // Just update existing document
         const docRef = doc(db, 'links', editItem.id);
-        await updateDoc(docRef, {
+        const updateData: any = {
           name: editName,
           targetUrl: validatedUrl,
           updatedAt: new Date().toISOString()
-        });
+        };
+        
+        // Ensure createdBy is set for legacy records
+        if (!editItem.createdBy) {
+          updateData.createdBy = auth.currentUser?.email || 'unknown';
+        }
+
+        await updateDoc(docRef, updateData);
       }
 
       setIsEditOpen(false);
@@ -333,7 +354,13 @@ export default function AdminDashboard() {
         message: 'อัปเดตข้อมูล QR Code เรียบร้อยแล้ว'
       });
     } catch (err) {
-      handleFirestoreError(err, 'update', `links/${editItem.id}`);
+      const msg = handleFirestoreError(err, 'update', `links/${editItem.id}`);
+      setNotification({
+        show: true,
+        type: 'delete',
+        title: 'เกิดข้อผิดพลาด',
+        message: `ไม่สามารถบันทึกข้อมูลได้: ${msg}`
+      });
     }
   };
 
@@ -398,7 +425,8 @@ export default function AdminDashboard() {
         name: newName || `Link ${new Date().toLocaleDateString()}`,
         createdAt: now,
         updatedAt: now,
-        clicks: 0
+        clicks: 0,
+        createdBy: auth.currentUser?.email || 'unknown'
       };
       await setDoc(doc(db, 'links', finalId), newItem);
       setIsAddOpen(false);
@@ -412,7 +440,13 @@ export default function AdminDashboard() {
         message: 'สร้าง QR Code ถาวรใหม่เรียบร้อยแล้ว'
       });
     } catch (err) {
-      handleFirestoreError(err, 'create', 'links');
+      const msg = handleFirestoreError(err, 'create', 'links');
+      setNotification({
+        show: true,
+        type: 'delete',
+        title: 'เกิดข้อผิดพลาด',
+        message: `ไม่สามารถสร้างรายการได้: ${msg}`
+      });
     }
   };
 
@@ -633,73 +667,113 @@ export default function AdminDashboard() {
                   ) : (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {paginatedLinks.map(link => (
-                          <div 
-                            key={link.id} 
-                            className="group bg-white p-5 rounded-3xl shadow-sm border border-slate-100 hover:border-blue-200 transition-all flex flex-col hover:shadow-lg hover:translate-y-[-2px]"
-                          >
-                             <div className="flex items-start justify-between mb-4">
-                                <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center p-1.5 group-hover:bg-white transition-colors">
-                                  {qrImages[link.id] ? (
-                                      <img src={qrImages[link.id]} alt="QR" className="w-full h-full object-contain" />
-                                  ) : (
-                                      <div className="w-full h-full bg-slate-100 animate-pulse rounded-lg" />
+                        {paginatedLinks.map(link => {
+                          const isSpecialAdmin = link.createdBy?.toLowerCase() === superAdminEmail.toLowerCase();
+                          const isGoogleUser = link.createdBy && link.createdBy !== 'public' && !isSpecialAdmin;
+                          
+                          let borderColorClass = 'border-slate-100';
+                          let glowClass = '';
+                          
+                          if (isSpecialAdmin) {
+                            borderColorClass = 'border-red-500 border-2';
+                            glowClass = 'shadow-red-100';
+                          } else if (isGoogleUser) {
+                            borderColorClass = 'border-blue-500 border-2';
+                            glowClass = 'shadow-blue-100';
+                          }
+
+                          return (
+                            <div 
+                              key={link.id} 
+                              className={`group bg-white p-5 rounded-3xl shadow-sm border transition-all flex flex-col hover:shadow-lg hover:translate-y-[-2px] ${borderColorClass} ${glowClass}`}
+                            >
+                               <div className="flex items-start justify-between mb-4">
+                                  <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center p-1.5 group-hover:bg-white transition-colors">
+                                    {qrImages[link.id] ? (
+                                        <img src={qrImages[link.id]} alt="QR" className="w-full h-full object-contain" />
+                                    ) : (
+                                        <div className="w-full h-full bg-slate-100 animate-pulse rounded-lg" />
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1">
+                                    <div className="flex gap-1">
+                                      <button 
+                                        onClick={() => copyToClipboard(link.id)}
+                                        className={`p-2 rounded-xl transition-all ${copyId === link.id ? 'bg-emerald-50 text-emerald-600' : 'hover:bg-blue-50 text-slate-400 hover:text-blue-500'}`}
+                                        title="Copy Short Link"
+                                      >
+                                        {copyId === link.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                      </button>
+                                      <button 
+                                        onClick={() => downloadQR(link, 'png')}
+                                        className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400"
+                                        title="Download PNG"
+                                      >
+                                        <Download className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                    {link.createdBy && (
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                        isSpecialAdmin ? 'bg-red-50 text-red-600' : 
+                                        isGoogleUser ? 'bg-blue-50 text-blue-600' : 
+                                        'bg-slate-50 text-slate-400'
+                                      }`}>
+                                        {isSpecialAdmin ? 'OWNER' : isGoogleUser ? 'ADMIN' : 'PUBLIC'}
+                                      </span>
+                                    )}
+                                  </div>
+                               </div>
+                               
+                               <div className="flex-1 min-w-0 mb-4">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="font-black text-[15px] text-[#0f2142] truncate uppercase tracking-tight" title={link.name || link.id}>
+                                      {link.name || link.id}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[9px] font-black uppercase">
+                                        <Eye className="w-2.5 h-2.5" />
+                                        <span>{link.clicks?.toLocaleString() || 0}</span>
+                                      </div>
+                                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[9px] font-black uppercase">Active</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 font-bold opacity-70 mb-2 truncate">ID: {link.id}</p>
+                                  <p className="text-[13px] text-slate-500 truncate font-medium flex items-center gap-2 mb-3" title={link.targetUrl}>
+                                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{link.targetUrl}</span>
+                                  </p>
+                                  <div className="text-[11px] text-slate-400 flex items-center justify-between font-bold mt-auto pt-3 border-t border-slate-50">
+                                     <div className="flex items-center space-x-2">
+                                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                                       <span className="truncate">อัปเดตเมื่อ {formatDate(link.updatedAt || link.createdAt)}</span>
+                                     </div>
+                                     {link.createdBy && <span className="text-[10px] opacity-50 truncate max-w-[100px]">{link.createdBy}</span>}
+                                  </div>
+                               </div>
+                
+                               <div className="flex items-center gap-2 pt-1">
+                                   {(isSuperAdmin || (link.createdBy === auth.currentUser?.email)) && (
+                                    <button 
+                                      onClick={() => openEdit(link)}
+                                      className="flex-1 px-4 py-3 border border-slate-100 text-[#0055ff] rounded-2xl text-[13px] font-black hover:bg-blue-50 hover:border-blue-100 transition-all bg-white shadow-sm flex items-center justify-center gap-2"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                      <span>เเก้ไข</span>
+                                    </button>
                                   )}
-                                </div>
-                                <div className="flex gap-1">
-                                  <button 
-                                    onClick={() => copyToClipboard(link.id)}
-                                    className={`p-2 rounded-xl transition-all ${copyId === link.id ? 'bg-emerald-50 text-emerald-600' : 'hover:bg-blue-50 text-slate-400 hover:text-blue-500'}`}
-                                    title="Copy Short Link"
-                                  >
-                                    {copyId === link.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                  </button>
-                                  <button 
-                                    onClick={() => downloadQR(link, 'png')}
-                                    className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400"
-                                    title="Download PNG"
-                                  >
-                                    <Download className="w-4 h-4" />
-                                  </button>
-                                </div>
-                             </div>
-                             
-                             <div className="flex-1 min-w-0 mb-4">
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <span className="font-black text-[15px] text-[#0f2142] truncate uppercase tracking-tight" title={link.name || link.id}>
-                                    {link.name || link.id}
-                                  </span>
-                                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[9px] font-black uppercase shrink-0">Active</span>
-                                </div>
-                                <p className="text-[11px] text-slate-400 font-bold opacity-70 mb-2 truncate">ID: {link.id}</p>
-                                <p className="text-[13px] text-slate-500 truncate font-medium flex items-center gap-2 mb-3" title={link.targetUrl}>
-                                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                                  <span className="truncate">{link.targetUrl}</span>
-                                </p>
-                                <div className="text-[11px] text-slate-400 flex items-center space-x-2 font-bold mt-auto pt-3 border-t border-slate-50">
-                                   <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                                   <span className="truncate">อัปเดตเมื่อ {formatDate(link.updatedAt || link.createdAt)}</span>
-                                </div>
-                             </div>
-              
-                             <div className="flex items-center gap-2 pt-1">
-                                <button 
-                                  onClick={() => openEdit(link)}
-                                  className="flex-1 px-4 py-3 border border-slate-100 text-[#0055ff] rounded-2xl text-[13px] font-black hover:bg-blue-50 hover:border-blue-100 transition-all bg-white shadow-sm flex items-center justify-center gap-2"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                  <span>เเก้ไข</span>
-                                </button>
-                                <button 
-                                  onClick={() => handleDeleteRequest(link.id, link.name || '')}
-                                  className="px-4 py-3 border border-slate-100 text-red-500 rounded-2xl hover:bg-red-50 hover:border-red-100 transition-all bg-white shadow-sm flex items-center justify-center"
-                                  title="ลบ"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                             </div>
-                          </div>
-                        ))}
+                                  {(isSuperAdmin || (link.createdBy === auth.currentUser?.email)) && (
+                                    <button 
+                                      onClick={() => handleDeleteRequest(link.id, link.name || '')}
+                                      className="px-4 py-3 border border-slate-100 text-red-500 rounded-2xl hover:bg-red-50 hover:border-red-100 transition-all bg-white shadow-sm flex items-center justify-center"
+                                      title="ลบ"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                               </div>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Pagination Controls */}

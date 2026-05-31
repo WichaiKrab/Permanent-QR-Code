@@ -16,6 +16,10 @@ service cloud.firestore {
              );
     }
 
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.email.lower() == "wsritangkum@gmail.com";
+    }
+
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 
     function incoming() { return request.resource.data; }
@@ -27,7 +31,8 @@ service cloud.firestore {
              data.targetUrl is string && data.targetUrl.size() <= 2048 &&
              data.name is string && data.name.size() <= 256 &&
              data.createdAt is string &&
-             data.clicks is number;
+             data.clicks is number &&
+             (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 256));
     }
 
     match /admins/{id} {
@@ -39,23 +44,27 @@ service cloud.firestore {
       // Anyone can read a link to be redirected
       allow get: if isValidId(linkId);
       
-      // Admins can list all links for the dashboard
-      allow list: if isAdmin();
+      // Admins can list links, but non-super-admins can only see their own
+      allow list: if isAdmin() && (isSuperAdmin() || resource.data.createdBy == request.auth.token.email);
 
       // Anyone can create a link for the public generator
       allow create: if isValidId(linkId) && 
                        isValidLinkRecord(incoming()) && 
                        incoming().id == linkId &&
-                       incoming().keys().hasOnly(['id', 'targetUrl', 'name', 'createdAt', 'updatedAt', 'clicks']);
+                       incoming().keys().hasOnly(['id', 'targetUrl', 'name', 'createdAt', 'updatedAt', 'clicks', 'createdBy']);
       
       // Only admins can update the target URL or name, but anyone can increment clicks
       allow update: if isValidId(linkId) && 
                        isValidLinkRecord(incoming()) && (
-         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['targetUrl', 'name', 'updatedAt', 'clicks', 'id'])) ||
+         (
+           isAdmin() && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['targetUrl', 'name', 'updatedAt', 'clicks', 'id', 'createdBy']) &&
+           (isSuperAdmin() || (existing().get('createdBy', '') == request.auth.token.email))
+         ) ||
          (incoming().diff(existing()).affectedKeys().hasOnly(['clicks']) && incoming().clicks == existing().clicks + 1)
        );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && (isSuperAdmin() || existing().get('createdBy', '') == request.auth.token.email);
     }
   }
 }

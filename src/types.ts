@@ -17,4 +17,5 @@ export interface LinkRecord {
   createdAt: string;
   updatedAt?: string;
   clicks: number;
+  createdBy?: string;
 }
