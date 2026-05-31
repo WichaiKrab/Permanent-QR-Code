@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { AnimatePresence, motion } from 'motion/react';
 import { generateQRDataUrl, generateQRSvg } from '../lib/qr';
 import { LinkRecord } from '../types';
 
@@ -39,7 +40,15 @@ export default function AdminDashboard() {
   const [isAdminLoading, setIsAdminLoading] = useState(false);
   
   // Notification / Alert state
-  const [notification, setNotification] = useState<{show: boolean, type: 'success' | 'delete', message: string, onConfirm?: () => void} | null>(null);
+  const [notification, setNotification] = useState<{
+    show: boolean, 
+    type: 'success' | 'delete' | 'warning', 
+    title?: string,
+    message: string, 
+    onConfirm?: () => void,
+    confirmLabel?: string,
+    cancelLabel?: string
+  } | null>(null);
   const [copyId, setCopyId] = useState<string | null>(null);
   
   const navigate = useNavigate();
@@ -226,19 +235,20 @@ export default function AdminDashboard() {
       validatedUrl = `https://${validatedUrl}`;
     }
 
-    // Check for exact duplicate (Name, URL, and ID)
+    // Check for any duplicate (Name, URL, or ID)
     const isDuplicate = links.some(link => 
-      link.id !== editItem.id && 
-      link.name === editName && 
-      link.targetUrl === validatedUrl && 
-      link.id === editId
+      link.id !== editItem.id && (
+        link.name === editName || 
+        link.targetUrl === validatedUrl || 
+        link.id === editId
+      )
     );
 
     if (isDuplicate) {
       setNotification({
         show: true,
         type: 'delete',
-        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์, Short ID) มีอยู่ในระบบแล้ว ไม่สามารถบันทึกซ้ำได้'
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถบันทึกซ้ำได้'
       });
       return;
     }
@@ -247,11 +257,32 @@ export default function AdminDashboard() {
       const isIdChanged = editId !== editItem.id;
 
       if (isIdChanged) {
-        // Confirmation for ID change
-        if (!window.confirm('คำเตือน: การเปลี่ยน Short ID จะทำให้ QR Code เดิมที่ดาวน์โหลดไปแล้วใช้งานไม่ได้ คุณแน่ใจหรือไม่?')) {
-          return;
-        }
+        // Confirmation for ID change using custom modal
+        setNotification({
+          show: true,
+          type: 'warning',
+          title: 'ยืนยันการเปลี่ยน Short ID',
+          message: 'การเปลี่ยน Short ID จะทำให้ QR Code เดิมที่ดาวน์โหลดไปแล้วใช้งานไม่ได้ คุณแน่ใจหรือไม่?',
+          confirmLabel: 'ยืนยันการเปลี่ยน',
+          cancelLabel: 'ยกเลิก',
+          onConfirm: () => performEditSave(validatedUrl, editId)
+        });
+      } else {
+        await performEditSave(validatedUrl, editId);
+      }
+    } catch (err) {
+      handleFirestoreError(err, 'update', `links/${editItem.id}`);
+    }
+  };
 
+  const performEditSave = async (validatedUrl: string, editId: string) => {
+    if (!editItem) return;
+    setNotification(null);
+
+    try {
+      const isIdChanged = editId !== editItem.id;
+
+      if (isIdChanged) {
         // Check if new ID already exists
         const newDocRef = doc(db, 'links', editId);
         const docSnap = await getDoc(newDocRef);
@@ -332,10 +363,10 @@ export default function AdminDashboard() {
       validatedUrl = `https://${validatedUrl}`;
     }
 
-    // Check for exact duplicate (Name, URL, and ID)
+    // Check for any duplicate (Name, URL, or ID)
     const isDuplicate = links.some(link => 
-      link.name === (newName || `Link ${new Date().toLocaleDateString()}`) && 
-      link.targetUrl === validatedUrl && 
+      link.name === (newName || `Link ${new Date().toLocaleDateString()}`) || 
+      link.targetUrl === validatedUrl || 
       link.id === finalId
     );
 
@@ -343,7 +374,7 @@ export default function AdminDashboard() {
       setNotification({
         show: true,
         type: 'delete',
-        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์, Short ID) มีอยู่ในระบบแล้ว ไม่สามารถสร้างซ้ำได้'
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถสร้างซ้ำได้'
       });
       return;
     }
@@ -718,57 +749,79 @@ export default function AdminDashboard() {
       </main>
       
       {/* Global Notifications Overlay */}
-      {notification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => notification.type === 'success' && setNotification(null)} />
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-8 text-center">
-              {notification.type === 'success' ? (
-                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mx-auto mb-5">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
-              ) : (
-                <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-5">
-                  <AlertCircle className="w-10 h-10" />
-                </div>
-              )}
+      <AnimatePresence>
+        {notification && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" 
+              onClick={() => notification.type === 'success' && setNotification(null)} 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="relative bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 text-center">
+                {notification.type === 'success' ? (
+                  <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mx-auto mb-5">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                ) : notification.type === 'warning' ? (
+                  <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500 mx-auto mb-5">
+                    <AlertCircle className="w-10 h-10" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-5">
+                    <AlertCircle className="w-10 h-10" />
+                  </div>
+                )}
+                
+                <h3 className="text-[20px] font-black text-[#0f2142] mb-2 leading-tight">
+                  {notification.title || (notification.type === 'success' ? 'ดำเนินการสำเร็จ' : 'ยืนยันการทำรายการ')}
+                </h3>
+                <p className="text-[15px] text-slate-500 font-bold leading-relaxed">
+                  {notification.message}
+                </p>
+              </div>
               
-              <h3 className="text-[20px] font-black text-[#0f2142] mb-2">
-                {notification.type === 'success' ? 'ดำเนินการสำเร็จ' : 'ยืนยันการทำรายการ'}
-              </h3>
-              <p className="text-[15px] text-slate-500 font-medium leading-relaxed">
-                {notification.message}
-              </p>
-            </div>
-            
-            <div className="p-4 bg-slate-50/50 flex gap-3">
-              {notification.type === 'success' ? (
-                <button 
-                  onClick={() => setNotification(null)}
-                  className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
-                >
-                  ตกลง
-                </button>
-              ) : (
-                <>
+              <div className="p-4 bg-slate-50/50 flex gap-3">
+                {notification.type === 'success' ? (
                   <button 
                     onClick={() => setNotification(null)}
-                    className="flex-1 bg-white border border-slate-200 text-slate-500 py-4 rounded-2xl font-black text-[15px] hover:bg-slate-50 transition-all active:scale-[0.98]"
+                    className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
                   >
-                    ยกเลิก
+                    ตกลง
                   </button>
-                  <button 
-                    onClick={() => notification.onConfirm?.()}
-                    className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-black text-[15px] hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 active:scale-[0.98]"
-                  >
-                    ยืนยันการลบ
-                  </button>
-                </>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <button 
+                      onClick={() => setNotification(null)}
+                      className="flex-1 bg-white border border-slate-200 text-slate-500 py-4 rounded-2xl font-black text-[15px] hover:bg-slate-50 transition-all active:scale-[0.98]"
+                    >
+                      {notification.cancelLabel || 'ยกเลิก'}
+                    </button>
+                    <button 
+                      onClick={() => notification.onConfirm?.()}
+                      className={`flex-1 text-white py-4 rounded-2xl font-black text-[15px] transition-all shadow-lg active:scale-[0.98] ${
+                        notification.type === 'warning' 
+                          ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/20' 
+                          : 'bg-red-500 hover:bg-red-600 shadow-red-500/20'
+                      }`}
+                    >
+                      {notification.confirmLabel || 'ยืนยันการลบ'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Add Modal / Backdrop */}
       {isAddOpen && (
