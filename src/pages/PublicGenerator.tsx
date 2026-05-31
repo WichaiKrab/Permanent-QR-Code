@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QrCode, Download, Copy, CheckCircle2, Menu, RotateCcw } from 'lucide-react';
+import { QrCode, Download, Copy, CheckCircle2, Menu, RotateCcw, AlertCircle, X, Check } from 'lucide-react';
 import { generateQRDataUrl, generateQRSvg } from '../lib/qr';
-import { v4 as uuidv4 } from 'uuid';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { LinkRecord } from '../types';
@@ -15,6 +14,7 @@ export default function PublicGenerator() {
   const [activeItem, setActiveItem] = useState<LinkRecord | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrSvg, setQrSvg] = useState('');
+  const [notification, setNotification] = useState<{show: boolean, type: 'success' | 'error', message: string} | null>(null);
   
   const appUrl = (window as any).env?.APP_URL || window.location.origin;
 
@@ -36,7 +36,11 @@ export default function PublicGenerator() {
       await setDoc(doc(db, 'links', newId), newItem);
       
       setActiveItem(newItem);
-      alert('สร้าง QR Code สำเร็จ! ข้อมูลถูกบันทึกลงระบบแล้ว');
+      setNotification({
+        show: true,
+        type: 'success',
+        message: 'สร้าง QR Code สำเร็จ! ข้อมูลถูกบันทึกลงระบบแล้ว'
+      });
       
       const shortUrl = `${appUrl}/r/${newItem.id}`;
         const settings = {
@@ -50,6 +54,11 @@ export default function PublicGenerator() {
         setQrSvg(svgText);
     } catch (err) {
       console.error(err);
+      setNotification({
+        show: true,
+        type: 'error',
+        message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง'
+      });
     }
     setIsGenerating(false);
   };
@@ -81,7 +90,11 @@ export default function PublicGenerator() {
   const copyShortLink = () => {
     if (activeItem) {
       navigator.clipboard.writeText(`${appUrl}/r/${activeItem.id}`);
-      alert('คัดลอกลิงก์สำเร็จ');
+      setNotification({
+        show: true,
+        type: 'success',
+        message: 'คัดลอกลิงก์สั้นเรียบร้อยแล้ว'
+      });
     }
   };
 
@@ -96,7 +109,7 @@ export default function PublicGenerator() {
         >
           <Menu className="w-6 h-6" strokeWidth={2.5} />
         </button>
-        <h1 className="text-[20px] font-bold text-[#0f2142] tracking-tight">QR Code ถาวร</h1>
+        <h1 className="text-[20px] font-bold text-[#0f2142] tracking-tight">Permanent QR Code</h1>
       </header>
 
       {/* Main Content Area */}
@@ -208,6 +221,42 @@ export default function PublicGenerator() {
       <footer className="py-6 text-center shrink-0">
         <p className="text-slate-400 text-[12px] font-medium">© 2026 Permanent QR Code Service</p>
       </footer>
+
+      {/* Global Notifications Overlay */}
+      {notification && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setNotification(null)} />
+          <div className="relative bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-8 text-center">
+              {notification.type === 'success' ? (
+                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mx-auto mb-5">
+                  <Check className="w-10 h-10" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-5">
+                  <AlertCircle className="w-10 h-10" />
+                </div>
+              )}
+              
+              <h3 className="text-[20px] font-black text-[#0f2142] mb-2">
+                {notification.type === 'success' ? 'ดำเนินการสำเร็จ' : 'เกิดข้อผิดพลาด'}
+              </h3>
+              <p className="text-[15px] text-slate-500 font-medium leading-relaxed">
+                {notification.message}
+              </p>
+            </div>
+            
+            <div className="p-4 bg-slate-50/50">
+              <button 
+                onClick={() => setNotification(null)}
+                className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
+              >
+                ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

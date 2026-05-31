@@ -9,7 +9,7 @@ import { th } from 'date-fns/locale';
 import { generateQRDataUrl, generateQRSvg } from '../lib/qr';
 import { LinkRecord } from '../types';
 
-import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -26,11 +26,13 @@ export default function AdminDashboard() {
   const [editItem, setEditItem] = useState<LinkRecord | null>(null);
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
+  const [editId, setEditId] = useState('');
 
   // Add modal state
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [newCustomId, setNewCustomId] = useState('');
   
   // Admin Management state
   const [newAdminEmail, setNewAdminEmail] = useState('');
@@ -181,18 +183,61 @@ export default function AdminDashboard() {
     setEditItem(item);
     setEditName(item.name || '');
     setEditUrl(item.targetUrl);
+    setEditId(item.id);
     setIsEditOpen(true);
   };
 
   const submitEdit = async () => {
-    if (!editItem || !editUrl) return;
-    try {
-      const docRef = doc(db, 'links', editItem.id);
-      await updateDoc(docRef, {
-        name: editName,
-        targetUrl: editUrl,
-        updatedAt: new Date().toISOString()
+    if (!editItem || !editUrl || !editId) return;
+
+    // Validate ID format (alphanumeric and hyphens only)
+    if (!/^[a-zA-Z0-9-]+$/.test(editId)) {
+      setNotification({
+        show: true,
+        type: 'delete',
+        message: 'Short ID ต้องประกอบด้วยตัวอักษร ภาษาอังกฤษ ตัวเลข หรือเครื่องหมาย - เท่านั้น'
       });
+      return;
+    }
+
+    try {
+      const isIdChanged = editId !== editItem.id;
+
+      if (isIdChanged) {
+        // Check if new ID already exists
+        const newDocRef = doc(db, 'links', editId);
+        const docSnap = await getDoc(newDocRef);
+        if (docSnap.exists()) {
+          setNotification({
+            show: true,
+            type: 'delete',
+            message: `Short ID "${editId}" ถูกใช้งานไปแล้ว กรุณาใช้ชื่ออื่น`
+          });
+          return;
+        }
+
+        // Create new document and delete old one
+        const now = new Date().toISOString();
+        const updatedItem: LinkRecord = {
+          ...editItem,
+          id: editId,
+          name: editName,
+          targetUrl: editUrl,
+          updatedAt: now
+        };
+
+        await setDoc(newDocRef, updatedItem);
+        await deleteDoc(doc(db, 'links', editItem.id));
+      } else {
+        // Just update existing document
+        const docRef = doc(db, 'links', editItem.id);
+        await updateDoc(docRef, {
+          name: editName,
+          targetUrl: editUrl,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
       setIsEditOpen(false);
       await fetchLinks();
       setNotification({
@@ -207,21 +252,47 @@ export default function AdminDashboard() {
 
   const submitAdd = async () => {
     if (!newUrl) return;
+    
+    let finalId = newCustomId.trim();
+    if (finalId) {
+      if (!/^[a-zA-Z0-9-]+$/.test(finalId)) {
+        setNotification({
+          show: true,
+          type: 'delete',
+          message: 'Short ID ต้องประกอบด้วยตัวอักษร ภาษาอังกฤษ ตัวเลข หรือเครื่องหมาย - เท่านั้น'
+        });
+        return;
+      }
+      
+      // Check for uniqueness
+      const checkDoc = await getDoc(doc(db, 'links', finalId));
+      if (checkDoc.exists()) {
+        setNotification({
+          show: true,
+          type: 'delete',
+          message: `Short ID "${finalId}" ถูกใช้งานไปแล้ว กรุณาใช้ชื่ออื่น`
+        });
+        return;
+      }
+    } else {
+      finalId = Math.random().toString(36).substring(2, 10);
+    }
+
     try {
-      const newId = Math.random().toString(36).substring(2, 10);
       const now = new Date().toISOString();
       const newItem: LinkRecord = {
-        id: newId,
+        id: finalId,
         targetUrl: newUrl,
         name: newName || `Link ${new Date().toLocaleDateString()}`,
         createdAt: now,
         updatedAt: now,
         clicks: 0
       };
-      await setDoc(doc(db, 'links', newId), newItem);
+      await setDoc(doc(db, 'links', finalId), newItem);
       setIsAddOpen(false);
       setNewName('');
       setNewUrl('');
+      setNewCustomId('');
       await fetchLinks();
       setNotification({
         show: true,
@@ -640,17 +711,31 @@ export default function AdminDashboard() {
               </div>
               
               <div className="p-8 space-y-6 bg-white">
-                 <div className="space-y-4">
-                    <div className="space-y-2">
-                       <label className="block text-[14px] font-black text-[#0f2142] uppercase tracking-wider ml-1">ชื่อรายการ</label>
-                       <input 
-                         type="text" 
-                         value={newName}
-                         onChange={(e) => setNewName(e.target.value)}
-                         className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 bg-slate-50/30 focus:bg-white focus:outline-none transition-all text-[15px] text-[#0f2142] font-black"
-                         placeholder="เช่น เมนูอาหาร, หน้าหลักเว็บ..."
-                       />
-                    </div>
+                    <div className="space-y-4">
+                       <div className="space-y-2">
+                          <label className="block text-[14px] font-black text-[#0f2142] uppercase tracking-wider ml-1">ชื่อรายการ</label>
+                          <input 
+                            type="text" 
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 bg-slate-50/30 focus:bg-white focus:outline-none transition-all text-[15px] text-[#0f2142] font-black"
+                            placeholder="เช่น เมนูอาหาร, หน้าหลักเว็บ..."
+                          />
+                       </div>
+
+                       <div className="space-y-2">
+                          <label className="block text-[14px] font-black text-[#0f2142] uppercase tracking-wider ml-1">กำหนด Short ID เอง (เว้นว่างเพื่อสุ่ม)</label>
+                          <div className="relative">
+                            <input 
+                              type="text" 
+                              value={newCustomId}
+                              onChange={(e) => setNewCustomId(e.target.value.replace(/\s+/g, '-'))}
+                              className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 bg-slate-50/30 focus:bg-white focus:outline-none transition-all text-[15px] text-[#0f2142] font-black"
+                              placeholder="เช่น custom-name"
+                            />
+                            <p className="text-[11px] text-slate-400 mt-1 ml-1">* ใช้ได้เฉพาะ A-Z, 0-9 และเครื่องหมาย -</p>
+                          </div>
+                       </div>
                     
                     <div className="space-y-2">
                        <label className="block text-[14px] font-black text-[#0055ff] uppercase tracking-wider ml-1">ลิงก์ปลายทาง (Target URL)</label>
@@ -713,6 +798,20 @@ export default function AdminDashboard() {
                          placeholder="ระบุชื่อรายการ..."
                        />
                     </div>
+
+                    <div className="space-y-2">
+                       <label className="block text-[14px] font-black text-[#0f2142] uppercase tracking-wider ml-1">แก้ไข Short Link ID</label>
+                       <div className="relative">
+                         <input 
+                           type="text" 
+                           value={editId}
+                           onChange={(e) => setEditId(e.target.value.replace(/\s+/g, '-'))}
+                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 bg-slate-50/30 focus:bg-white focus:outline-none transition-all text-[15px] text-[#0f2142] font-black"
+                           placeholder="ระบุ ID..."
+                         />
+                         <p className="text-[11px] text-slate-400 mt-1 ml-1">* หากเปลี่ยน ID ลิงก์เดิมจะใช้งานไม่ได้</p>
+                       </div>
+                    </div>
                     
                     <div className="space-y-2">
                        <label className="block text-[14px] font-black text-[#0f2142] uppercase tracking-wider ml-1">ลิงก์ปัจจุบัน</label>
@@ -744,7 +843,7 @@ export default function AdminDashboard() {
                  
                  <button 
                    onClick={submitEdit}
-                   disabled={!editUrl || (editUrl === editItem?.targetUrl && editName === editItem?.name)}
+                   disabled={!editUrl || (editUrl === editItem?.targetUrl && editName === editItem?.name && editId === editItem?.id)}
                    className="w-full bg-[#0055ff] hover:bg-blue-700 active:scale-[0.98] text-white py-5 rounded-2xl font-black text-[17px] transition-all disabled:opacity-30 shadow-xl shadow-blue-500/20 mb-2 uppercase tracking-wide"
                  >
                    บันทึกข้อมูล
