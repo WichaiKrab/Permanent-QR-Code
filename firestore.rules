@@ -9,12 +9,10 @@ service cloud.firestore {
     
     // Check if the user is in the admins collection or matches the owner email
     function isAdmin() { 
-      return isSignedIn() && 
-             request.auth.token.email_verified == true && (
+      return isSignedIn() && (
                exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
                exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
-               request.auth.token.email == "Wsritangkum@gmail.com" ||
-               request.auth.token.email == "wsritangkum@gmail.com"
+               request.auth.token.email.lower() == "wsritangkum@gmail.com"
              );
     }
 
@@ -33,8 +31,7 @@ service cloud.firestore {
     }
 
     match /admins/{id} {
-       allow list, write: if request.auth.token.email == "Wsritangkum@gmail.com" || 
-                             request.auth.token.email == "wsritangkum@gmail.com";
+       allow list, write: if request.auth.token.email.lower() == "wsritangkum@gmail.com";
        allow get: if isSignedIn() && (id == request.auth.uid || id == request.auth.token.email);
     }
 
@@ -51,11 +48,12 @@ service cloud.firestore {
                        incoming().id == linkId &&
                        incoming().keys().hasOnly(['id', 'targetUrl', 'name', 'createdAt', 'updatedAt', 'clicks']);
       
-      // Only admins can update the target URL or name
+      // Only admins can update the target URL or name, but anyone can increment clicks
       allow update: if isValidId(linkId) && 
                        isValidLinkRecord(incoming()) && (
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['targetUrl', 'name', 'updatedAt']))
-      );
+         (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['targetUrl', 'name', 'updatedAt', 'clicks', 'id'])) ||
+         (incoming().diff(existing()).affectedKeys().hasOnly(['clicks']) && incoming().clicks == existing().clicks + 1)
+       );
 
       allow delete: if isAdmin();
     }

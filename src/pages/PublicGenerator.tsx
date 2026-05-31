@@ -5,6 +5,7 @@ import { generateQRDataUrl, generateQRSvg } from '../lib/qr';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { LinkRecord } from '../types';
+import { AnimatePresence, motion } from 'motion/react';
 
 export default function PublicGenerator() {
   const navigate = useNavigate();
@@ -14,7 +15,14 @@ export default function PublicGenerator() {
   const [activeItem, setActiveItem] = useState<LinkRecord | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrSvg, setQrSvg] = useState('');
-  const [notification, setNotification] = useState<{show: boolean, type: 'success' | 'error', message: string} | null>(null);
+  const [notification, setNotification] = useState<{
+    show: boolean, 
+    type: 'success' | 'error' | 'delete', 
+    title?: string,
+    message: string,
+    cancelLabel?: string,
+    onConfirm?: () => void
+  } | null>(null);
   
   const appUrl = (window as any).env?.APP_URL || window.location.origin;
 
@@ -28,12 +36,14 @@ export default function PublicGenerator() {
         validatedUrl = `https://${validatedUrl}`;
       }
 
+      const finalName = name || `Public Link ${new Date().toLocaleDateString()}`;
+
       const newId = Math.random().toString(36).substring(2, 10);
       const now = new Date().toISOString();
       const newItem: LinkRecord = {
         id: newId,
         targetUrl: validatedUrl,
-        name: name || `Public Link ${new Date().toLocaleDateString()}`,
+        name: finalName,
         createdAt: now,
         updatedAt: now,
         clicks: 0
@@ -229,40 +239,54 @@ export default function PublicGenerator() {
       </footer>
 
       {/* Global Notifications Overlay */}
-      {notification && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setNotification(null)} />
-          <div className="relative bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-8 text-center">
-              {notification.type === 'success' ? (
-                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mx-auto mb-5">
-                  <Check className="w-10 h-10" />
-                </div>
-              ) : (
-                <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-5">
-                  <AlertCircle className="w-10 h-10" />
-                </div>
-              )}
+      <AnimatePresence>
+        {notification && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" 
+              onClick={() => notification.type === 'success' && setNotification(null)} 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="relative bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 text-center">
+                {notification.type === 'success' ? (
+                  <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mx-auto mb-5">
+                    <Check className="w-10 h-10" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-5">
+                    <AlertCircle className="w-10 h-10" />
+                  </div>
+                )}
+                
+                <h3 className="text-[20px] font-black text-[#0f2142] mb-2 leading-tight">
+                  {notification.title || (notification.type === 'success' ? 'ดำเนินการสำเร็จ' : 'เกิดข้อผิดพลาด')}
+                </h3>
+                <p className="text-[15px] text-slate-500 font-bold leading-relaxed">
+                  {notification.message}
+                </p>
+              </div>
               
-              <h3 className="text-[20px] font-black text-[#0f2142] mb-2">
-                {notification.type === 'success' ? 'ดำเนินการสำเร็จ' : 'เกิดข้อผิดพลาด'}
-              </h3>
-              <p className="text-[15px] text-slate-500 font-medium leading-relaxed">
-                {notification.message}
-              </p>
-            </div>
-            
-            <div className="p-4 bg-slate-50/50">
-              <button 
-                onClick={() => setNotification(null)}
-                className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
-              >
-                ตกลง
-              </button>
-            </div>
+              <div className="p-4 bg-slate-50/50">
+                <button 
+                  onClick={() => setNotification(null)}
+                  className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
+                >
+                  {notification.cancelLabel || 'ตกลง'}
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

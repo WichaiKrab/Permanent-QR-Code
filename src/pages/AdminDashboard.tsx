@@ -22,6 +22,11 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState('');
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 9;
+  const listTopRef = useRef<HTMLDivElement>(null);
+  
   // Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editItem, setEditItem] = useState<LinkRecord | null>(null);
@@ -248,7 +253,10 @@ export default function AdminDashboard() {
       setNotification({
         show: true,
         type: 'delete',
-        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถบันทึกซ้ำได้'
+        title: 'ข้อมูลซ้ำในระบบ',
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถบันทึกซ้ำได้',
+        cancelLabel: 'ยกเลิก',
+        // No onConfirm means it will show as an alert with one button
       });
       return;
     }
@@ -374,7 +382,10 @@ export default function AdminDashboard() {
       setNotification({
         show: true,
         type: 'delete',
-        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถสร้างซ้ำได้'
+        title: 'ข้อมูลซ้ำในระบบ',
+        message: 'ข้อมูลนี้ (ชื่อ, ลิงก์ หรือ Short ID) มีผู้ใช้งานในระบบแล้ว ไม่สามารถสร้างซ้ำได้',
+        cancelLabel: 'ยกเลิก',
+        // No onConfirm means it will show as an alert with one button
       });
       return;
     }
@@ -480,6 +491,23 @@ export default function AdminDashboard() {
     return idMatch || urlMatch || nameMatch;
   });
 
+  // Pagination logic
+  const totalPages = Math.ceil(filteredLinks.length / itemsPerPage);
+  const paginatedLinks = filteredLinks.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex flex-col">
       
@@ -554,10 +582,13 @@ export default function AdminDashboard() {
         {activeTab === 'qrcodes' ? (
           <>
             {/* Search & Filter Bar */}
-            <section className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-6 shrink-0">
+            <section ref={listTopRef} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-6 shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center justify-between sm:justify-start sm:gap-4">
-                  <h2 className="font-bold text-[18px] text-[#0f2142]">รายการ QR Code ทั้งหมด</h2>
+                  <div>
+                    <h2 className="font-bold text-[18px] text-[#0f2142]">รายการ QR Code ทั้งหมด</h2>
+                    <p className="text-[12px] text-slate-400 font-bold mt-0.5">พบ {filteredLinks.length} รายการ</p>
+                  </div>
                   <button 
                     onClick={() => setIsAddOpen(true)}
                     className="flex items-center space-x-2 px-4 py-2 bg-[#0055ff] text-white rounded-xl hover:bg-blue-600 transition-colors shadow-sm font-bold text-[13px]"
@@ -579,8 +610,8 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            {/* Links List */}
-            <div className="flex-1 space-y-4 pb-20">
+            {/* Links Grid */}
+            <div className="flex-1 pb-20">
               {loading ? (
                  <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-100 border-dashed">
                     <div className="w-10 h-10 border-4 border-[#0055ff] border-t-transparent rounded-full animate-spin mb-4" />
@@ -594,76 +625,140 @@ export default function AdminDashboard() {
                        <p className="text-[15px] font-bold">{fetchError}</p>
                        <button onClick={fetchLinks} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-sm">ลองใหม่อีกครั้ง</button>
                     </div>
-                  ) : filteredLinks.length === 0 ? (
+                  ) : paginatedLinks.length === 0 ? (
                      <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 border-dashed">
                         <Search className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                         <p className="text-[15px] font-bold text-slate-400">ไม่พบคลังข้อมูล QR Code ในระบบ</p>
                      </div>
-                  ) : filteredLinks.map(link => (
-                    <div 
-                      key={link.id} 
-                      className="group bg-white p-5 rounded-3xl shadow-sm border border-slate-100 hover:border-blue-200 transition-all flex flex-col sm:flex-row sm:items-center gap-5 hover:shadow-md"
-                    >
-                       <div className="w-20 h-20 bg-slate-50 rounded-2xl border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center p-2 group-hover:bg-white transition-colors">
-                         {qrImages[link.id] ? (
-                            <img src={qrImages[link.id]} alt="QR" className="w-full h-full object-contain" />
-                         ) : (
-                            <div className="w-full h-full bg-slate-100 animate-pulse rounded-lg" />
-                         )}
-                       </div>
-                       
-                       <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-black text-[16px] text-[#0f2142] truncate uppercase tracking-tight">{link.name || link.id}</span>
-                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-black uppercase">Active</span>
-                          </div>
-                          <p className="text-[12px] text-slate-400 font-bold opacity-70 mb-1">ID: {link.id}</p>
-                          <p className="text-[14px] text-slate-500 truncate font-medium mb-3 flex items-center gap-2" title={link.targetUrl}>
-                            <Lock className="w-3.5 h-3.5" />
-                            {link.targetUrl}
-                          </p>
-                          <div className="text-[12px] text-slate-400 flex items-center space-x-2 font-bold">
-                             <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-                             <span>อัปเดตเมื่อ {formatDate(link.updatedAt || link.createdAt)}</span>
-                          </div>
-                       </div>
-        
-                       <div className="flex shrink-0 items-center gap-2 sm:self-center">
-                          <div className="hidden sm:flex items-center gap-1 mr-2 px-1 border-r border-slate-100">
-                            <button 
-                              onClick={() => copyToClipboard(link.id)}
-                              className={`p-2.5 rounded-xl transition-all ${copyId === link.id ? 'bg-emerald-50 text-emerald-600' : 'hover:bg-slate-50 text-slate-400'}`}
-                              title="Copy Short Link"
-                            >
-                              {copyId === link.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                            <button 
-                              onClick={() => downloadQR(link, 'png')}
-                              className="p-2.5 hover:bg-slate-50 rounded-xl transition-all text-slate-400"
-                              title="Download PNG"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </div>
-                          
-                          <button 
-                            onClick={() => openEdit(link)}
-                            className="flex-1 sm:flex-none px-6 py-3 border-2 border-slate-100 text-[#0055ff] rounded-2xl text-[14px] font-black hover:bg-blue-50 hover:border-blue-100 transition-all bg-white shadow-sm flex items-center justify-center gap-2"
-                            title="แก้ไข"
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {paginatedLinks.map(link => (
+                          <div 
+                            key={link.id} 
+                            className="group bg-white p-5 rounded-3xl shadow-sm border border-slate-100 hover:border-blue-200 transition-all flex flex-col hover:shadow-lg hover:translate-y-[-2px]"
                           >
-                            <Edit className="w-4 h-4" />
-                            <span className="sm:hidden text-[13px]">เเก้ไข</span>
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteRequest(link.id, link.name || '')}
-                            className="px-4 py-3 border-2 border-slate-100 text-red-500 rounded-2xl hover:bg-red-50 hover:border-red-100 transition-all bg-white shadow-sm flex items-center justify-center"
-                            title="ลบ"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                             <div className="flex items-start justify-between mb-4">
+                                <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center p-1.5 group-hover:bg-white transition-colors">
+                                  {qrImages[link.id] ? (
+                                      <img src={qrImages[link.id]} alt="QR" className="w-full h-full object-contain" />
+                                  ) : (
+                                      <div className="w-full h-full bg-slate-100 animate-pulse rounded-lg" />
+                                  )}
+                                </div>
+                                <div className="flex gap-1">
+                                  <button 
+                                    onClick={() => copyToClipboard(link.id)}
+                                    className={`p-2 rounded-xl transition-all ${copyId === link.id ? 'bg-emerald-50 text-emerald-600' : 'hover:bg-blue-50 text-slate-400 hover:text-blue-500'}`}
+                                    title="Copy Short Link"
+                                  >
+                                    {copyId === link.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                  </button>
+                                  <button 
+                                    onClick={() => downloadQR(link, 'png')}
+                                    className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400"
+                                    title="Download PNG"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </div>
+                             </div>
+                             
+                             <div className="flex-1 min-w-0 mb-4">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <span className="font-black text-[15px] text-[#0f2142] truncate uppercase tracking-tight" title={link.name || link.id}>
+                                    {link.name || link.id}
+                                  </span>
+                                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[9px] font-black uppercase shrink-0">Active</span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 font-bold opacity-70 mb-2 truncate">ID: {link.id}</p>
+                                <p className="text-[13px] text-slate-500 truncate font-medium flex items-center gap-2 mb-3" title={link.targetUrl}>
+                                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{link.targetUrl}</span>
+                                </p>
+                                <div className="text-[11px] text-slate-400 flex items-center space-x-2 font-bold mt-auto pt-3 border-t border-slate-50">
+                                   <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                                   <span className="truncate">อัปเดตเมื่อ {formatDate(link.updatedAt || link.createdAt)}</span>
+                                </div>
+                             </div>
+              
+                             <div className="flex items-center gap-2 pt-1">
+                                <button 
+                                  onClick={() => openEdit(link)}
+                                  className="flex-1 px-4 py-3 border border-slate-100 text-[#0055ff] rounded-2xl text-[13px] font-black hover:bg-blue-50 hover:border-blue-100 transition-all bg-white shadow-sm flex items-center justify-center gap-2"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>เเก้ไข</span>
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteRequest(link.id, link.name || '')}
+                                  className="px-4 py-3 border border-slate-100 text-red-500 rounded-2xl hover:bg-red-50 hover:border-red-100 transition-all bg-white shadow-sm flex items-center justify-center"
+                                  title="ลบ"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="mt-12 flex flex-col items-center gap-6">
+                           <div className="flex items-center gap-2">
+                             <button 
+                               onClick={() => handlePageChange(currentPage - 1)}
+                               disabled={currentPage === 1}
+                               className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-all shadow-sm"
+                             >
+                               <RotateCcw className="w-5 h-5 rotate-[-90deg]" />
+                             </button>
+                             
+                             <div className="flex items-center gap-1">
+                                {[...Array(totalPages)].map((_, i) => {
+                                  const pageNum = i + 1;
+                                  // Show first, last, and relative pages
+                                  if (
+                                    pageNum === 1 || 
+                                    pageNum === totalPages || 
+                                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                                  ) {
+                                    return (
+                                      <button
+                                        key={pageNum}
+                                        onClick={() => handlePageChange(pageNum)}
+                                        className={`w-12 h-12 rounded-2xl font-black text-[14px] transition-all ${
+                                          currentPage === pageNum 
+                                            ? 'bg-[#0f2142] text-white shadow-lg shadow-slate-200' 
+                                            : 'bg-white border border-slate-100 text-slate-500 hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        {pageNum}
+                                      </button>
+                                    );
+                                  }
+                                  if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+                                    return <span key={pageNum} className="px-1 text-slate-300 font-bold">...</span>;
+                                  }
+                                  return null;
+                                })}
+                             </div>
+
+                             <button 
+                               onClick={() => handlePageChange(currentPage + 1)}
+                               disabled={currentPage === totalPages}
+                               className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-all shadow-sm"
+                             >
+                               <RotateCcw className="w-5 h-5 rotate-[90deg]" />
+                             </button>
+                           </div>
+                           <p className="text-[13px] text-slate-400 font-bold uppercase tracking-widest">
+                             หน้า {currentPage} จาก {totalPages}
+                           </p>
                         </div>
-                    </div>
-                  ))}
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -790,12 +885,12 @@ export default function AdminDashboard() {
               </div>
               
               <div className="p-4 bg-slate-50/50 flex gap-3">
-                {notification.type === 'success' ? (
+                {notification.type === 'success' || !notification.onConfirm ? (
                   <button 
                     onClick={() => setNotification(null)}
                     className="w-full bg-[#0f2142] text-white py-4 rounded-2xl font-black text-[15px] hover:bg-slate-800 transition-all active:scale-[0.98]"
                   >
-                    ตกลง
+                    {notification.cancelLabel || 'ตกลง'}
                   </button>
                 ) : (
                   <>
